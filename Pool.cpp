@@ -1,63 +1,42 @@
 #include "Pool.h"
 
 Pool::Pool() {
+    for (uint32_t i = 0; i < THREAD_COUNT; ++i) {
+        assignments.push_back(new std::deque<Task>());
+        workers.push_back(new Worker(*assignments[i], globalMutex, cv));
+    }
 }
 
 Pool::~Pool() {
-    std::unique_lock<std::mutex> lock(synchroMutex);
-    cancelled = true;
+    std::unique_lock<std::mutex> lock(globalMutex);
+    state = PoolState::CANCELLED;
     lock.unlock();
     cv.notify_all();
-    for (auto &thread: threads) {
-        thread.join();
+    for (uint32_t i = 0; i < THREAD_COUNT; ++i) {
+        delete workers[i];
     }
 }
 
 bool Pool::submit(const Task &task) {
-    pendingCount.fetch_add(1, std::memory_order::relaxed);
-    std::unique_lock<std::mutex> lock(synchroMutex);
-    taskDeque.push_back(task);
+    std::unique_lock<std::mutex> lock(globalMutex);
+    uint32_t currentWorker = getCurrentWorker();
+    assignments[currentWorker] -> push_back(task);
     lock.unlock();
-    cv.notify_one();
-    return true;
-}
-
-bool Pool::tryLaunchNext() {
-    Task task;
-
-    std::unique_lock<std::mutex> lock(synchroMutex);
-    if (taskDeque.empty()) {
-        return false;
-    }
-    task = std::move(taskDeque.front());
-    taskDeque.pop_front();
-    lock.unlock();
-
-    task();
-    pendingCount.fetch_sub(1, std::memory_order::release);
+    cv.notify_all();
     return true;
 }
 
 void Pool::run() {
     for (uint32_t i = 0; i < THREAD_COUNT; i++) {
-        threads.emplace_back([this]() {
-            runOneThread();
-        });
-    }
-}
-
-void Pool::runOneThread() {
-    for (;;) {
-        std::unique_lock<std::mutex> lock(synchroMutex);
-        cv.wait(lock, [this]() { return cancelled || !taskDeque.empty(); });
-        if (taskDeque.empty()) {
-            return;
-        }
-        lock.unlock();
-        tryLaunchNext();
+        workers[i] -> run();
     }
 }
 
 void Pool::cancel() {
-    cancelled = true;
+    state = PoolState::CANCELLED;
+}
+
+// Side effect: increments next worker index
+uint32_t Pool::getCurrentWorker() {
+    return nextWorker.fetch_add(1) % THREAD_COUNT;
 }

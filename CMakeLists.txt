@@ -5,4 +5,6 @@ set(CMAKE_CXX_STANDARD 20)
 
 add_executable(mini_scheduler main.cpp
         Pool.cpp
-        Pool.h)
+        Pool.h
+        Worker.cpp
+        Worker.h)

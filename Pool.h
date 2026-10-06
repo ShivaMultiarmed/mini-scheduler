@@ -3,19 +3,21 @@
 #include <deque>
 #include <functional>
 #include <mutex>
+#include "Worker.h"
 
-using Task = std::function<void()>;
+enum class PoolState {
+    ACTIVE, CANCELLED
+};
 
 class Pool {
     uint32_t THREAD_COUNT = 4;
-    std::vector<std::thread> threads;
     std::condition_variable cv;
-    std::deque<Task> taskDeque;
-    std::mutex synchroMutex;
-    std::atomic<int64_t> pendingCount{0};
-    bool cancelled = false;
-    bool tryLaunchNext();
-    void runOneThread();
+    std::mutex globalMutex;
+    std::vector<Worker*> workers;
+    std::vector<std::deque<Task>*> assignments;
+    std::atomic<int32_t> nextWorker{0};
+    uint32_t getCurrentWorker();
+    PoolState state = PoolState::ACTIVE;
 public:
     Pool();
     ~Pool();
