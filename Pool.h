@@ -10,16 +10,14 @@ enum class PoolState {
 };
 
 class Pool {
-    uint32_t THREAD_COUNT = 4;
+    uint32_t workerCount;
     std::condition_variable cv;
-    std::mutex globalMutex;
+    std::mutex mutex;
     std::vector<Worker*> workers;
-    std::vector<std::deque<Task>*> assignments;
     std::atomic<int32_t> nextWorker{0};
-    uint32_t getCurrentWorker();
     PoolState state = PoolState::ACTIVE;
 public:
-    Pool();
+    Pool(uint32_t workerCount = 4);
     ~Pool();
     bool submit(const Task& task);
     void run();

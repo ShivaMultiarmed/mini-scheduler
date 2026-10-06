@@ -2,6 +2,7 @@
 #include <deque>
 #include <functional>
 #include <mutex>
+#include <optional>
 
 using Task = std::function<void()>;
 
@@ -11,7 +12,7 @@ enum class WorkerState {
 
 class Worker {
     WorkerState state = WorkerState::IDLE;
-    std::deque<Task> &taskDeque;
+    std::deque<Task> taskDeque;
     std::mutex &globalMutex, mutex;
     std::condition_variable &cv;
 
@@ -19,18 +20,28 @@ class Worker {
 
     std::thread workerThread;
 
-public:
-    void run();
+    std::optional<Task> popFront();
+    std::optional<Task> popBack();
+    std::vector<Worker*>* siblings;
 
-    void wake();
+public:
+    void connectWithSiblings(std::vector<Worker*>* siblings);
+    void run();
+    void join();
+    void cancel();
+
+    void submit(const Task& task);
+    std::optional<Task> steal(Worker* worker);
 
     Worker(
-        std::deque<Task> &taskDeque,
         std::mutex &globalMutex,
         std::condition_variable &cv
     );
 
     Worker(Worker &&a) = delete;
+
+    bool hasWork();
+    bool anyWork(); // not only in the current worker but stolen as well
 
     ~Worker();
 };
