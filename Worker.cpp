@@ -12,7 +12,10 @@ Worker::Worker(
 }
 
 Worker::~Worker() {
+    std::unique_lock<std::mutex> lock(mutex);
     state = WorkerState::CANCELLED;
+    lock.unlock();
+    cv.notify_all();
     workerThread.join();
 }
 
