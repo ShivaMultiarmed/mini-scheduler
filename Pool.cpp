@@ -9,10 +9,11 @@ Pool::~Pool() {
 }
 
 bool Pool::submit(const Task &task) {
-    std::unique_lock<std::mutex> lock(mutex);
-    uint32_t currentWorker = nextWorker.fetch_add(1) % workerCount;
-    workers[currentWorker]->submit(task);
-    lock.unlock();
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        uint32_t currentWorker = nextWorker.fetch_add(1) % workerCount;
+        workers[currentWorker]->submit(task);
+    }
     cv.notify_one();
     return true;
 }
@@ -30,9 +31,10 @@ void Pool::run() {
 }
 
 void Pool::cancel() {
-    std::unique_lock<std::mutex> lock(mutex);
-    state = PoolState::CANCELLED;
-    lock.unlock();
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        state = PoolState::CANCELLED;
+    }
     cv.notify_all();
     for (auto worker : workers) {
         worker -> cancel();

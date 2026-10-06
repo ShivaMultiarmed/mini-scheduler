@@ -10,21 +10,29 @@ Worker::Worker(
 }
 
 Worker::~Worker() {
-    cancel();
+    std::unique_lock<std::mutex> lock(globalMutex);
+    WorkerState curState = state;
+    lock.unlock();
+    if (curState != WorkerState::CANCELLED) {
+        cancel();
+    }
 }
 
 void Worker::run() {
     workerThread = std::thread([this]() {
         for (;;) {
-            std::unique_lock<std::mutex> lock(mutex);
-            cv.wait(lock, [this]() {
-                return state == WorkerState::CANCELLED || anyWork();
-            });
-            if (state == WorkerState::CANCELLED || !anyWork()) {
-                return;
+            if (runTask()) {
+                continue;
             }
-            lock.unlock();
-            runTask();
+            {
+                std::unique_lock<std::mutex> lock(globalMutex);
+                cv.wait(lock, [this]() {
+                    return state == WorkerState::CANCELLED || anyWork();
+                });
+                if (state == WorkerState::CANCELLED || !anyWork()) {
+                    return;
+                }
+            }
         }
     });
 }
@@ -62,7 +70,6 @@ bool Worker::runTask() {
 void Worker::submit(const Task &task) {
     std::unique_lock<std::mutex> lock(mutex);
     taskDeque.push_back(task);
-    lock.unlock();
 }
 
 std::optional<Task> Worker::popBack() {
@@ -72,24 +79,26 @@ std::optional<Task> Worker::popBack() {
     }
     Task task = std::move(taskDeque.back());
     taskDeque.pop_back();
-    lock.unlock();
     return std::optional(task);
 }
 
 std::optional<Task> Worker::steal(Worker *worker) {
-    return worker -> popBack();
+    return worker->popBack();
 }
 
-void Worker::connectWithSiblings(std::vector<Worker *>* siblings) {
-    this -> siblings = siblings;
+void Worker::connectWithSiblings(std::vector<Worker *> *siblings) {
+    this->siblings = siblings;
 }
 
 void Worker::cancel() {
-    std::unique_lock<std::mutex> lock(globalMutex);
-    state = WorkerState::CANCELLED;
-    lock.unlock();
+    {
+        std::unique_lock<std::mutex> lock(globalMutex);
+        state = WorkerState::CANCELLED;
+    }
     cv.notify_all();
-    workerThread.join();
+    if (workerThread.joinable()) {
+        workerThread.join();
+    }
 }
 
 bool Worker::hasWork() {
@@ -98,7 +107,7 @@ bool Worker::hasWork() {
 }
 
 bool Worker::anyWork() {
-    for (auto sibling : *siblings) {
+    for (auto sibling: *siblings) {
         if (sibling->hasWork()) {
             return true;
         }

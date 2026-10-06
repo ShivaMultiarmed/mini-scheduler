@@ -27,7 +27,6 @@ class Worker {
 public:
     void connectWithSiblings(std::vector<Worker*>* siblings);
     void run();
-    void join();
     void cancel();
 
     void submit(const Task& task);

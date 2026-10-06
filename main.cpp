@@ -19,10 +19,16 @@ int main() {
     Pool p;
     p.run();
     p.submit([](){
-       emulateWork("Compressing image", 1e9);
+       emulateWork("Compressing image 1", 1e5);
     });
     p.submit([](){
-       emulateWork("Sending an API call", 1e7);
+       emulateWork("Sending an API call 1", 1e7);
+    });
+    p.submit([](){
+       emulateWork("Compressing image 2", 1e8);
+    });
+    p.submit([](){
+       emulateWork("Sending an API call 2", 1e8);
     });
     return 0;
 }
