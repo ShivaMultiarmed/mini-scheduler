@@ -1,5 +1,7 @@
 #include "Pool.h"
 
+thread_local Worker* currWorker = nullptr;
+
 Pool::Pool(uint32_t workerCount)
     : workerCount(workerCount) {
 }
@@ -11,8 +13,8 @@ Pool::~Pool() {
 bool Pool::submit(const Task &task) {
     {
         std::unique_lock<std::mutex> lock(mutex);
-        uint32_t currentWorker = nextWorker.fetch_add(1) % workerCount;
-        workers[currentWorker]->submit(task);
+        Worker* currentWorker = currWorker ? currWorker : workers[nextWorker.fetch_add(1) % workerCount];
+        currentWorker -> submit(task);
     }
     cv.notify_one();
     return true;
@@ -20,10 +22,7 @@ bool Pool::submit(const Task &task) {
 
 void Pool::run() {
     for (uint32_t i = 0; i < workerCount; ++i) {
-        workers.push_back(new Worker(mutex, cv));
-    }
-    for (uint32_t i = 0; i < workerCount; ++i) {
-        workers[i]->connectWithSiblings(&workers);
+        workers.push_back(new Worker(mutex, cv, &workers));
     }
     for (uint32_t i = 0; i < workerCount; i++) {
         workers[i]->run();
@@ -37,9 +36,14 @@ void Pool::cancel() {
     }
     cv.notify_all();
     for (auto worker : workers) {
-        worker -> cancel();
+        worker -> join();
     }
     for (auto worker : workers) {
         delete worker;
     }
+}
+
+bool Pool::runTask() {
+    Worker* currentWorker = currWorker ? currWorker : workers[nextWorker.fetch_add(1) % workerCount];
+    return currentWorker->runTask();
 }

@@ -2,24 +2,29 @@
 #include <algorithm>
 #include <optional>
 
+extern thread_local Worker *currWorker;
+
 Worker::Worker(
     std::mutex &globalMutex,
-    std::condition_variable &cv
+    std::condition_variable &cv,
+    std::vector<Worker *> *siblings
 ) : globalMutex(globalMutex),
-    cv(cv) {
+    cv(cv),
+    siblings(siblings) {
 }
 
 Worker::~Worker() {
     std::unique_lock<std::mutex> lock(globalMutex);
     WorkerState curState = state;
     lock.unlock();
-    if (curState != WorkerState::CANCELLED) {
-        cancel();
+    if (curState != WorkerState::JOINED) {
+        join();
     }
 }
 
 void Worker::run() {
     workerThread = std::thread([this]() {
+        currWorker = this;
         for (;;) {
             if (runTask()) {
                 continue;
@@ -27,9 +32,9 @@ void Worker::run() {
             {
                 std::unique_lock<std::mutex> lock(globalMutex);
                 cv.wait(lock, [this]() {
-                    return state == WorkerState::CANCELLED || anyWork();
+                    return state == WorkerState::JOINED || anyWork();
                 });
-                if (state == WorkerState::CANCELLED || !anyWork()) {
+                if (state == WorkerState::JOINED && !anyWork()) {
                     return;
                 }
             }
@@ -86,14 +91,10 @@ std::optional<Task> Worker::steal(Worker *worker) {
     return worker->popBack();
 }
 
-void Worker::connectWithSiblings(std::vector<Worker *> *siblings) {
-    this->siblings = siblings;
-}
-
-void Worker::cancel() {
+void Worker::join() {
     {
         std::unique_lock<std::mutex> lock(globalMutex);
-        state = WorkerState::CANCELLED;
+        state = WorkerState::JOINED;
     }
     cv.notify_all();
     if (workerThread.joinable()) {

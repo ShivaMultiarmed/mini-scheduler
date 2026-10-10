@@ -7,4 +7,6 @@ add_executable(mini_scheduler main.cpp
         Pool.cpp
         Pool.h
         Worker.cpp
-        Worker.h)
+        Worker.h
+        TaskGroup.cpp
+        TaskGroup.h)

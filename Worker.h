@@ -7,7 +7,7 @@
 using Task = std::function<void()>;
 
 enum class WorkerState {
-    IDLE, STEALING, WORKING, CANCELLED
+    IDLE, STEALING, WORKING, JOINED
 };
 
 class Worker {
@@ -16,8 +16,6 @@ class Worker {
     std::mutex &globalMutex, mutex;
     std::condition_variable &cv;
 
-    bool runTask();
-
     std::thread workerThread;
 
     std::optional<Task> popFront();
@@ -25,16 +23,17 @@ class Worker {
     std::vector<Worker*>* siblings;
 
 public:
-    void connectWithSiblings(std::vector<Worker*>* siblings);
     void run();
-    void cancel();
+    bool runTask();
+    void join();
 
     void submit(const Task& task);
     std::optional<Task> steal(Worker* worker);
 
     Worker(
         std::mutex &globalMutex,
-        std::condition_variable &cv
+        std::condition_variable &cv,
+        std::vector<Worker *> *siblings
     );
 
     Worker(Worker &&a) = delete;
